@@ -52,7 +52,8 @@ target_link_libraries(pico_usb_adc
     pico_multicore
     tinyusb_device
     tinyusb_board
-	hardware_flash)
+	hardware_flash
+    hardware_adc)
 
 # Uncomment this line to enable fix for Errata RP2040-E5 (the fix requires use of GPIO 15)
 #target_compile_definitions(pico_usb_adc PUBLIC PICO_RP2040_USB_DEVICE_ENUMERATION_FIX=1)
