@@ -8,6 +8,7 @@
 #include <hardware/uart.h>
 #include <hardware/gpio.h>
 #include "hardware/adc.h"
+#include "hardware/dma.h"
 #include <pico/multicore.h>
 #include <pico/stdlib.h>
 #include <string.h>
@@ -25,6 +26,21 @@
 
 #define BUFFER_SIZE 2560
 
+// set this to determine sample rate
+// 0     = 500,000 Hz
+// 960   = 50,000 Hz
+// 9600  = 5,000 Hz
+#define CLOCK_DIV 960
+#define FSAMP 50000
+
+// Channel 0 is GPIO26
+#define CAPTURE_CHANNEL 0
+#define CAPTURE_DEPTH 1000
+#define N_SAMPLES 512
+
+// globals
+dma_channel_config cfg;
+uint dma_chan;
 typedef struct
 {
   cdc_line_coding_t usb_lc;
@@ -132,22 +148,64 @@ void __not_in_flash_func(adc_capture)(uint16_t *buf, size_t count)
   adc_fifo_drain();
 }
 
-// void sample(uint8_t *capture_buf) {
-//   adc_fifo_drain();
-//   adc_run(false);
+void sample(uint8_t *capture_buf)
+{
+  adc_fifo_drain();
+  adc_run(false);
 
-//   dma_channel_configure(dma_chan, &cfg,
-// 			capture_buf,    // dst
-// 			&adc_hw->fifo,  // src
-// 			NSAMP,          // transfer count
-// 			true            // start immediately
-// 			);
+  dma_channel_configure(dma_chan, &cfg,
+                        capture_buf,   // dst
+                        &adc_hw->fifo, // src
+                        N_SAMPLES,     // transfer count
+                        true           // start immediately
+  );
 
-//   gpio_put(LED_PIN, 1);
-//   adc_run(true);
-//   dma_channel_wait_for_finish_blocking(dma_chan);
-//   gpio_put(LED_PIN, 0);
-// }
+  gpio_put(LED_PIN, 1);
+  adc_run(true);
+  dma_channel_wait_for_finish_blocking(dma_chan);
+  gpio_put(LED_PIN, 0);
+}
+
+void setup()
+{
+  stdio_init_all();
+
+  gpio_init(LED_PIN);
+  gpio_set_dir(LED_PIN, GPIO_OUT);
+
+  adc_gpio_init(26 + CAPTURE_CHANNEL);
+
+  adc_init();
+  adc_select_input(CAPTURE_CHANNEL);
+  adc_fifo_setup(
+      true,  // Write each completed conversion to the sample FIFO
+      true,  // Enable DMA data request (DREQ)
+      1,     // DREQ (and IRQ) asserted when at least 1 sample present
+      false, // We won't see the ERR bit because of 8 bit reads; disable.
+      true   // Shift each sample to 8 bits when pushing to FIFO
+  );
+
+  // set sample rate
+  adc_set_clkdiv(CLOCK_DIV);
+
+  sleep_ms(1000);
+  // Set up the DMA to start transferring data as soon as it appears in FIFO
+  uint dma_chan = dma_claim_unused_channel(true);
+  cfg = dma_channel_get_default_config(dma_chan);
+
+  // Reading from constant address, writing to incrementing byte addresses
+  channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
+  channel_config_set_read_increment(&cfg, false);
+  channel_config_set_write_increment(&cfg, true);
+
+  // Pace transfers based on availability of ADC samples
+  channel_config_set_dreq(&cfg, DREQ_ADC);
+
+  // // calculate frequencies of each bin
+  // float f_max = FSAMP;
+  // float f_res = f_max / N_SAMPLES;
+  // for (int i = 0; i < N_SAMPLES; i++) {freqs[i] = f_res*i;}
+}
 
 int main(void)
 {
@@ -163,35 +221,22 @@ int main(void)
     sleep_ms(100);
   }
 
-  stdio_init_all();
-  adc_init();
-  adc_set_temp_sensor_enabled(true);
-  // Set all pins to input (as far as SIO is concerned)
-  gpio_set_dir_all_bits(0);
-  for (int i = 2; i < 30; ++i)
-  {
-    gpio_set_function(i, GPIO_FUNC_SIO);
-    if (i >= 26)
-    {
-      gpio_disable_pulls(i);
-      gpio_set_input_enabled(i, false);
-    }
-  }
+  setup();
 
   usbd_serial_init();
 
   multicore_launch_core1(core1_entry);
 
-#define N_SAMPLES 512
-  uint16_t sample_buf[N_SAMPLES];
+  uint8_t sample_buf[N_SAMPLES];
   while (1)
   {
     if (tud_cdc_n_connected(0))
     {
-      adc_capture(sample_buf, N_SAMPLES);
+      sample(sample_buf);
       tud_cdc_n_write(0, sample_buf, N_SAMPLES);
-      tud_cdc_n_write(0, "\r\nabc\r\n", 7);
+      // tud_cdc_n_write(0, "\r\nabc\r\n", 7);
       tud_cdc_n_write_flush(0);
+      sleep_ms(500);
     }
   }
 
