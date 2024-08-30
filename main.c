@@ -13,6 +13,8 @@
 #include <pico/stdlib.h>
 #include <string.h>
 #include <tusb.h>
+#include <math.h>
+#include <time.h>
 
 #include "bsp/board_api.h"
 
@@ -27,16 +29,18 @@
 #define BUFFER_SIZE 2560
 
 // set this to determine sample rate
-// 0     = 500,000 Hz
+// 96    = 500,000 Hz
+// 240   = 200,000 Hz
+// 480   = 100,000 Hz
 // 960   = 50,000 Hz
 // 9600  = 5,000 Hz
-#define CLOCK_DIV 960
-#define FSAMP 50000
+#define CLOCK_DIV 240
+// #define FSAMP 50000
 
 // Channel 0 is GPIO26
 #define CAPTURE_CHANNEL 0
 #define CAPTURE_DEPTH 1000
-#define N_SAMPLES 512
+#define N_SAMPLES 500
 
 // globals
 dma_channel_config cfg;
@@ -55,6 +59,20 @@ typedef struct
 } uart_data_t;
 
 uart_data_t UART_DATA[CFG_TUD_CDC];
+
+static char log_buff[512];
+void mylog(const char *format, ...)
+{
+  if (tud_cdc_n_connected(1))
+  {
+    va_list list;
+    va_start(list, format);
+    sprintf(log_buff, format, list);
+    va_end(list);
+    tud_cdc_n_write(1, log_buff, strlen(log_buff));
+    tud_cdc_n_write_flush(1);
+  }
+}
 
 void usb_read_bytes(uint8_t itf)
 {
@@ -138,15 +156,15 @@ void core1_entry(void)
   }
 }
 
-void __not_in_flash_func(adc_capture)(uint16_t *buf, size_t count)
-{
-  adc_fifo_setup(true, false, 0, false, false);
-  adc_run(true);
-  for (size_t i = 0; i < count; i = i + 1)
-    buf[i] = adc_fifo_get_blocking();
-  adc_run(false);
-  adc_fifo_drain();
-}
+// void __not_in_flash_func(adc_capture)(uint16_t *buf, size_t count)
+// {
+//   adc_fifo_setup(true, false, 0, false, false);
+//   adc_run(true);
+//   for (size_t i = 0; i < count; i = i + 1)
+//     buf[i] = adc_fifo_get_blocking();
+//   adc_run(false);
+//   adc_fifo_drain();
+// }
 
 void sample(uint8_t *capture_buf)
 {
@@ -236,7 +254,7 @@ int main(void)
       tud_cdc_n_write(0, sample_buf, N_SAMPLES);
       // tud_cdc_n_write(0, "\r\nabc\r\n", 7);
       tud_cdc_n_write_flush(0);
-      sleep_ms(500);
+      // sleep_ms(500);
     }
   }
 
