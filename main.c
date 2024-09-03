@@ -195,6 +195,7 @@ void setup()
 
   adc_init();
   adc_select_input(CAPTURE_CHANNEL);
+	adc_set_temp_sensor_enabled(false);
   adc_fifo_setup(
       true,  // Write each completed conversion to the sample FIFO
       true,  // Enable DMA data request (DREQ)
@@ -251,7 +252,7 @@ int main(void)
     if (tud_cdc_n_connected(0))
     {
       sample(sample_buf);
-      tud_cdc_n_write(0, sample_buf, N_SAMPLES);
+      tud_cdc_n_write(0, sample_buf, sizeof(sample_buf));
       // tud_cdc_n_write(0, "\r\nabc\r\n", 7);
       tud_cdc_n_write_flush(0);
       // sleep_ms(500);
