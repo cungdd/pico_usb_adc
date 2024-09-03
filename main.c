@@ -40,7 +40,7 @@
 // Channel 0 is GPIO26
 #define CAPTURE_CHANNEL 0
 #define CAPTURE_DEPTH 1000
-#define N_SAMPLES 500
+#define N_SAMPLES 250
 
 // globals
 dma_channel_config cfg;
@@ -166,7 +166,7 @@ void core1_entry(void)
 //   adc_fifo_drain();
 // }
 
-void sample(uint8_t *capture_buf)
+void sample(uint16_t *capture_buf)
 {
   adc_fifo_drain();
   adc_run(false);
@@ -201,7 +201,7 @@ void setup()
       true,  // Enable DMA data request (DREQ)
       1,     // DREQ (and IRQ) asserted when at least 1 sample present
       false, // We won't see the ERR bit because of 8 bit reads; disable.
-      true   // Shift each sample to 8 bits when pushing to FIFO
+      false   // Shift each sample to 8 bits when pushing to FIFO
   );
 
   // set sample rate
@@ -213,7 +213,7 @@ void setup()
   cfg = dma_channel_get_default_config(dma_chan);
 
   // Reading from constant address, writing to incrementing byte addresses
-  channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
+  channel_config_set_transfer_data_size(&cfg, DMA_SIZE_16);
   channel_config_set_read_increment(&cfg, false);
   channel_config_set_write_increment(&cfg, true);
 
@@ -246,7 +246,7 @@ int main(void)
 
   multicore_launch_core1(core1_entry);
 
-  uint8_t sample_buf[N_SAMPLES];
+  uint16_t sample_buf[N_SAMPLES];
   while (1)
   {
     if (tud_cdc_n_connected(0))

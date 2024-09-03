@@ -4,6 +4,8 @@ from PyQt5.QtWidgets import QApplication, QVBoxLayout, QPushButton, QWidget
 from PyQt5.QtCore import QTimer
 import numpy as np
 
+BUFFER_LENGTH = 100000
+
 # Cấu hình cổng serial
 port = '/dev/ttyACM0'  # Thay đổi tùy theo cổng USB của bạn (ví dụ: 'COM3' trên Windows)
 baudrate = 115200  # Tốc độ baud, cần khớp với cấu hình thiết bị của bạn
@@ -28,7 +30,9 @@ plot = plot_widget.addPlot(title="Dữ liệu từ cổng serial")
 curve = plot.plot([], [], pen=pg.mkPen('r', width=1))  # Đường đỏ với độ dày 1
 plot.setLabel('left', 'Giá trị')
 plot.setLabel('bottom', 'Thời gian')
-plot.setYRange(0, 255)  # Giá trị byte từ 0 đến 255
+
+# Điều chỉnh phạm vi Y-axis để phù hợp với giá trị 12-bit
+plot.setYRange(0, 4096)  # 16-bit values range from 0 to 65535
 
 # Đặt nền của đồ thị thành màu trắng
 plot_widget.setBackground('w')  # Sử dụng phương thức này để đặt nền trắng cho toàn bộ widget
@@ -52,20 +56,19 @@ def update_plot():
     global data_buffer
     try:
         if not is_paused:
-            if ser.in_waiting > 0:
+            if ser.in_waiting > 1:  # Đảm bảo có ít nhất 2 byte để đọc
                 # Đọc dữ liệu từ cổng serial
-                data = ser.read(ser.in_waiting)
-                data_values = list(data)
+                data = ser.read(ser.in_waiting - ser.in_waiting%2)
                 
-                # Thêm dữ liệu vào bộ đệm
-                data_buffer.extend(data_values)
+                for i in range(0, len(data) - 1, 2):
+                    # value 16-bit
+                    value = ((data[i+1] & 0x0f) << 8) | data[i]
+                    data_buffer.append(value)
                 
-                # Giữ lại 100,000 giá trị gần nhất
-                if len(data_buffer) > 100000:
-                    data_buffer = data_buffer[-100000:]
+                # if len(data_buffer) > BUFFER_LENGTH:
+                #     data_buffer = data_buffer[-BUFFER_LENGTH:]
                 
-                # Cập nhật đồ thị nếu đã đọc đủ 100,000 giá trị
-                if len(data_buffer) >= 100000:
+                if len(data_buffer) >= BUFFER_LENGTH:
                     # Tạo trục thời gian tương ứng với dữ liệu
                     time_data = np.linspace(0, 1, len(data_buffer))
                     
