@@ -29,19 +29,20 @@
 #define BUFFER_SIZE 2560
 
 // set this to determine sample rate
-// 96    = 500,000 Hz
-// 240   = 200,000 Hz
-// 480   = 100,000 Hz
-// 960   = 50,000 Hz
-// 9600  = 5,000 Hz
-#define CLOCK_DIV 240
-// #define FSAMP 50000
+#define CLOCK_DEV_FREQUENCY_500_KHZ 96
+#define CLOCK_DEV_FREQUENCY_200_KHZ 240
+#define CLOCK_DEV_FREQUENCY_100_KHZ 480
+#define CLOCK_DEV_FREQUENCY_50_KHZ 960
+#define CLOCK_DEV_FREQUENCY_10_KHZ 4800
+#define CLOCK_DEV_FREQUENCY_5_KHZ 9600
+
+#define CLOCK_DIV CLOCK_DEV_FREQUENCY_10_KHZ
 
 // Channel 0 is GPIO26
 #define CAPTURE_CHANNEL 0
 #define CAPTURE_DEPTH 1000
 
-#define SAMPLE_BIT_8
+// #define SAMPLE_BIT_8
 
 #ifdef SAMPLE_BIT_8
 #define N_SAMPLES 512
@@ -175,7 +176,7 @@ void core1_entry(void)
 //   adc_fifo_drain();
 // }
 
-void sample(sample_data_t *capture_buf)
+void sample(sample_data_t *capture_buf, int len)
 {
 	adc_fifo_drain();
 	adc_run(false);
@@ -183,7 +184,7 @@ void sample(sample_data_t *capture_buf)
 	dma_channel_configure(dma_chan, &cfg,
 												capture_buf,	 // dst
 												&adc_hw->fifo, // src
-												N_SAMPLES,		 // transfer count
+												len,					 // transfer count
 												true					 // start immediately
 	);
 
@@ -236,11 +237,27 @@ void setup()
 
 	// Pace transfers based on availability of ADC samples
 	channel_config_set_dreq(&cfg, DREQ_ADC);
+}
 
-	// // calculate frequencies of each bin
-	// float f_max = FSAMP;
-	// float f_res = f_max / N_SAMPLES;
-	// for (int i = 0; i < N_SAMPLES; i++) {freqs[i] = f_res*i;}
+typedef union
+{
+	struct
+	{
+		uint8_t d1 : 6;
+		uint16_t d2 : 6;
+		// uint8_t d3 : 4;
+	} d8;
+	uint16_t d16;
+} sample_data_u;
+
+static void convert_data_16bit(uint16_t *data, int len)
+{
+	sample_data_u sample_data;
+	for (uint32_t i = 0; i < len; i++)
+	{
+		sample_data.d16 = data[i];
+		data[i] = (sample_data.d8.d2 << 8) | sample_data.d8.d1 | 0x80;
+	}
 }
 
 int main(void)
@@ -275,10 +292,13 @@ int main(void)
 	{
 		if (tud_cdc_n_connected(0))
 		{
-			sample(sample_buf);
+			sample(sample_buf, N_SAMPLES);
+#ifndef SAMPLE_BIT_8
+			convert_data_16bit(sample_buf, N_SAMPLES);
+#endif
 #if 1
 			tud_cdc_n_write(0, sample_buf, sizeof(sample_buf));
-			tud_cdc_n_write_flush(0);
+			// tud_cdc_n_write_flush(0);
 #else
 			mutex_enter_blocking(&ud->uart_mtx);
 			for (int i = 0; i < N_SAMPLES; i++)

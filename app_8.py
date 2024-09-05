@@ -4,6 +4,8 @@ from PyQt5.QtWidgets import QApplication, QVBoxLayout, QPushButton, QWidget
 from PyQt5.QtCore import QTimer
 import numpy as np
 
+BUFFER_LENGTH = 50000
+
 # Cấu hình cổng serial
 port = '/dev/ttyACM0'  # Thay đổi tùy theo cổng USB của bạn (ví dụ: 'COM3' trên Windows)
 baudrate = 115200  # Tốc độ baud, cần khớp với cấu hình thiết bị của bạn
@@ -60,12 +62,12 @@ def update_plot():
                 # Thêm dữ liệu vào bộ đệm
                 data_buffer.extend(data_values)
                 
-                # Giữ lại 100,000 giá trị gần nhất
-                if len(data_buffer) > 100000:
-                    data_buffer = data_buffer[-100000:]
+                # # Giữ lại 100,000 giá trị gần nhất
+                # if len(data_buffer) > BUFFER_LENGTH:
+                #     data_buffer = data_buffer[-BUFFER_LENGTH:]
                 
                 # Cập nhật đồ thị nếu đã đọc đủ 100,000 giá trị
-                if len(data_buffer) >= 100000:
+                if len(data_buffer) >= BUFFER_LENGTH:
                     # Tạo trục thời gian tương ứng với dữ liệu
                     time_data = np.linspace(0, 1, len(data_buffer))
                     
