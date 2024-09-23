@@ -18,47 +18,43 @@ endif()
 set(sdkVersion 2.0.0)
 set(toolchainVersion 13_2_Rel1)
 set(picotoolVersion 2.0.0)
-include(${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+if (EXISTS ${picoVscode})
+    include(${picoVscode})
+endif()
 # ====================================================================================
 set(PICO_BOARD pico CACHE STRING "Board type")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
 
-project(pico_usb_adc C CXX ASM)
+project(adc_fft C CXX ASM)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-cmake_minimum_required(VERSION 3.13)
+add_executable(adc_fft adc_fft.c kiss_fft.c kiss_fftr.c )
 
-add_executable(pico_usb_adc)
+pico_set_program_name(adc_fft "adc_fft")
+pico_set_program_version(adc_fft "0.1")
 
-target_sources(pico_usb_adc PUBLIC
-        ${CMAKE_CURRENT_LIST_DIR}/main.c
-        ${CMAKE_CURRENT_LIST_DIR}/usb_descriptors.c
-        )
+# Modify the below lines to enable/disable output over UART/USB
+pico_enable_stdio_uart(adc_fft 1)
+pico_enable_stdio_usb(adc_fft 0)
 
-# Make sure TinyUSB can find tusb_config.h
-target_include_directories(pico_usb_adc PUBLIC
-        ${CMAKE_CURRENT_LIST_DIR})
+# Add the standard library to the build
+target_link_libraries(adc_fft
+        pico_stdlib
+        hardware_adc
+        hardware_dma)
 
-# In addition to pico_stdlib required for common PicoSDK functionality, add dependency on tinyusb_device
-# for TinyUSB device support and tinyusb_board for the additional board support library used by the example
-target_link_libraries(pico_usb_adc 
-    pico_stdlib
-    pico_multicore
-    tinyusb_device
-    tinyusb_board
-	hardware_flash
-    hardware_adc
-    hardware_dma)
+# Add the standard include files to the build
+target_include_directories(adc_fft PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}
+  ${CMAKE_CURRENT_LIST_DIR}/.. # for our common lwipopts or any other standard includes, if required
+)
 
-# Uncomment this line to enable fix for Errata RP2040-E5 (the fix requires use of GPIO 15)
-#target_compile_definitions(pico_usb_adc PUBLIC PICO_RP2040_USB_DEVICE_ENUMERATION_FIX=1)
+pico_add_extra_outputs(adc_fft)
 
-pico_add_extra_outputs(pico_usb_adc)
-
-# add url via pico_set_program_url
