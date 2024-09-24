@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(adc_fft adc_fft.c kiss_fft.c kiss_fftr.c )
+add_executable(adc_fft main.c kiss_fft.c kiss_fftr.c )
 
 pico_set_program_name(adc_fft "adc_fft")
 pico_set_program_version(adc_fft "0.1")
