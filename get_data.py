@@ -17,6 +17,8 @@ SAMPLE_RATE = 10000
 EXPORT_DURATION_SEC = 10
 
 # Hàng đợi để ghi dữ liệu nền
+is_exporting = False
+export_data_queue = queue.Queue()
 log_queue = queue.Queue()
 export_requests = queue.Queue()
 log_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'serial_log.txt')
@@ -33,17 +35,20 @@ def log_writer():
 
     buffer = []
 
+    export_file = None
+
     while True:
         try:
             item = log_queue.get(timeout=1)
             if item is None:
                 if current_log_file:
                     current_log_file.close()
+                if export_file:
+                    export_file.close()
                 break
 
+            # Ghi log bình thường
             buffer.extend(item)
-
-            # Tính tên file theo giờ hiện tại
             now = time.localtime()
             hour_str = time.strftime("%Y-%m-%d_%H", now)
 
@@ -54,25 +59,34 @@ def log_writer():
                 full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
                 current_log_file = open(full_path, 'a')
                 current_hour = hour_str
-                print(f"📝 Ghi vào file mới: {filename}")
+                print(f"📝 Ghi vào file log mới: {filename}")
 
             for val in item:
                 current_log_file.write(f"{val}\n")
             current_log_file.flush()
 
-            # Xử lý yêu cầu xuất 10s tiếp theo
-            while not export_requests.empty():
-                export_requests.get()
-                export_data = buffer[-SAMPLE_RATE * EXPORT_DURATION_SEC:]
-                export_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'next_10s_data.txt')
-                with open(export_path, 'w') as ef:
-                    for v in export_data:
-                        ef.write(f"{v}\n")
-                print("✅ Đã xuất 10 giây dữ liệu tiếp theo vào 'next_10s_data.txt'.")
+            # Ghi dữ liệu export nếu đang bật
+            try:
+                while True:
+                    export_item = export_data_queue.get_nowait()
+                    if export_file is None:
+                        export_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'export_data.txt')
+                        export_file = open(export_path, 'a')
+                        print(f"📁 Bắt đầu ghi dữ liệu xuất vào 'export_data.txt'")
+                    for v in export_item:
+                        export_file.write(f"{v}\n")
+                    export_file.flush()
+            except queue.Empty:
+                pass
+
+            # Nếu export tắt thì đóng file export
+            if export_file and export_data_queue.empty() and not is_exporting:
+                export_file.close()
+                export_file = None
+                print("📁 Đã ngừng ghi dữ liệu xuất.")
 
         except queue.Empty:
             continue
-
 
 # Khởi chạy thread ghi
 log_thread = threading.Thread(target=log_writer)
@@ -118,7 +132,6 @@ except Exception as e:
     app.quit()            # ⬅ Thoát GUI nếu đã khởi tạo
     sys.exit()
 
-
 def update_plot():
     global data_buffer, all_data, sample_count, last_time
     try:
@@ -141,7 +154,11 @@ def update_plot():
                     plot.setXRange(0, 1, padding=0)
                     
                     all_data.extend(data_buffer)
-                    log_queue.put(list(data_buffer))  # 👈 Đẩy vào hàng đợi
+                    log_queue.put(list(data_buffer))  # Ghi log bình thường
+
+                    if is_exporting:
+                        export_data_queue.put(list(data_buffer))  # Ghi dữ liệu xuất
+
                     data_buffer = []
 
             current_time = time.time()
@@ -151,6 +168,7 @@ def update_plot():
                 last_time = current_time
     except Exception as e:
         print(f"Lỗi trong quá trình cập nhật đồ thị: {e}")
+
 
 def zoom_in():
     x_range = plot.viewRange()[0]
@@ -169,15 +187,25 @@ def pause_update():
     is_paused = not is_paused
     btn_pause.setText('Resume' if is_paused else 'Pause')
 
-def export_next_10s():
-    export_requests.put(True)  # Gửi tín hiệu cho thread ghi
-    print("📤 Đang chờ 10 giây dữ liệu tiếp theo để ghi...")
+def toggle_export():
+    global is_exporting
+    is_exporting = not is_exporting
+    if is_exporting:
+        btn_export.setText("Đang xuất dữ liệu...")
+        btn_export.setStyleSheet("background-color: green; color: white;")
+        print("▶️ Bắt đầu xuất dữ liệu vào file 'export_data.txt'")
+    else:
+        btn_export.setText("Bắt đầu xuất dữ liệu")
+        btn_export.setStyleSheet("")
+        print("⏹️ Dừng xuất dữ liệu")
+
 
 # Nút
 btn_zoom_in.clicked.connect(zoom_in)
 btn_zoom_out.clicked.connect(zoom_out)
 btn_pause.clicked.connect(pause_update)
-btn_export.clicked.connect(export_next_10s)
+btn_export.clicked.connect(toggle_export)
+btn_export.setText("Bắt đầu xuất dữ liệu")
 
 # Bắt đầu cập nhật
 timer = QTimer()
