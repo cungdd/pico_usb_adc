@@ -7,6 +7,7 @@ import numpy as np
 import time
 import threading
 import queue
+import sys
 
 sample_count = 0
 last_time = time.time()
@@ -105,14 +106,18 @@ layout.addWidget(btn_pause)
 layout.addWidget(btn_export)
 
 # Serial config
-port = '/dev/ttyACM0'
+port = input("Nhap port:")
 baudrate = 115200
 try:
     ser = serial.Serial(port, baudrate, timeout=1)
     print(f"Đã mở cổng serial {port} thành công.")
 except Exception as e:
     print(f"Không thể mở cổng serial: {e}")
-    exit()
+    log_queue.put(None)   # ⬅ Gửi tín hiệu kết thúc cho log_writer
+    log_thread.join()     # ⬅ Chờ thread ghi kết thúc
+    app.quit()            # ⬅ Thoát GUI nếu đã khởi tạo
+    sys.exit()
+
 
 def update_plot():
     global data_buffer, all_data, sample_count, last_time
