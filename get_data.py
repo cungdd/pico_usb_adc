@@ -132,11 +132,13 @@ except Exception as e:
     app.quit()            # ⬅ Thoát GUI nếu đã khởi tạo
     sys.exit()
 
+MAX_POINTS_TO_PLOT = 50000  # ví dụ bạn muốn giữ và vẽ tối đa 50,000 mẫu
+
 def update_plot():
     global data_buffer, all_data, sample_count, last_time
     try:
         if not is_paused:
-            if ser.in_waiting > 1:
+            if ser.in_waiting > 0:
                 data = ser.read(ser.in_waiting)
                 i = 0
                 while i < len(data) - 1:
@@ -148,18 +150,24 @@ def update_plot():
                     else:
                         i += 1
 
-                if len(data_buffer) >= BUFFER_LENGTH:
-                    time_data = np.linspace(0, 1, len(data_buffer))
-                    curve.setData(time_data, data_buffer)
-                    plot.setXRange(0, 1, padding=0)
-                    
+                if data_buffer:
                     all_data.extend(data_buffer)
+                    # Giữ all_data không vượt quá MAX_POINTS_TO_PLOT
+                    if len(all_data) > MAX_POINTS_TO_PLOT:
+                        all_data = all_data[-MAX_POINTS_TO_PLOT:]
+
                     log_queue.put(list(data_buffer))  # Ghi log bình thường
 
                     if is_exporting:
                         export_data_queue.put(list(data_buffer))  # Ghi dữ liệu xuất
 
                     data_buffer = []
+
+            # Vẽ toàn bộ dữ liệu trong all_data (hoặc phần mới nhất)
+            if all_data:
+                x = np.linspace(0, len(all_data)/SAMPLE_RATE, len(all_data))  # trục thời gian
+                curve.setData(x, all_data)
+                plot.setXRange(x[0], x[-1], padding=0)
 
             current_time = time.time()
             if current_time - last_time >= 1.0:
